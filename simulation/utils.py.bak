@@ -18,15 +18,14 @@ def calculate_P(t, delta_D, U, I, N, U_mean, I_mean, alpha=0.5, beta=0.3, lambda
     U_I_term = alpha * (U / U_mean) * (I / I_mean)
     N_term = beta * N
     integrand = delta_D_term + U_I_term + N_term
-    # Normalize by time interval to keep P in [0, 1]
-    P = np.trapz(integrand * decay, t) / T
+    P = np.trapz(integrand * decay, t)
     if detailed:
         return {
             'P': P,
             'contributions': {
-                'delta_D': np.trapz(delta_D_term * decay, t) / T,
-                'U_I': np.trapz(U_I_term * decay, t) / T,
-                'N': np.trapz(N_term * decay, t) / T
+                'delta_D': np.trapz(delta_D_term * decay, t),
+                'U_I': np.trapz(U_I_term * decay, t),
+                'N': np.trapz(N_term * decay, t)
             }
         }
     return P
@@ -37,7 +36,7 @@ def generate_synthetic_data(n_nodes, T=10):
     U = np.random.normal(0.5, 0.1, n_nodes)
     I = np.random.gamma(2, 0.2, n_nodes)
     delta_D = np.cumsum(np.random.normal(0, 0.05, n_nodes))
-    N = np.full(n_nodes, 0.5)
+    N = np.full(n_nodes, 0.5)  # Placeholder for graph-based N
     return t, U, I, delta_D, N
 
 def scenario_supportive_network(graph, node_a, node_b, t, U_mean, I_mean):
@@ -66,7 +65,7 @@ def scenario_chaotic_pulse(graph, node_d, t, U_mean, I_mean):
     for neighbor in graph.neighbors(node_d):
         edge = graph[node_d][neighbor]
         edge['P'] = calculate_P(t, edge['delta_D'], edge['U'], edge['I'], edge['N'], U_mean, I_mean, detailed=True)
-        if edge['P']['P'] > 0.7:  # Propagate wave
+        if edge['P'] > 0.7:  # Propagate wave
             edge['I'] += 0.1
             if graph.degree(neighbor) > 5:  # Hub amplification
                 edge['P']['P'] *= 1.2
