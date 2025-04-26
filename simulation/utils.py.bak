@@ -18,14 +18,15 @@ def calculate_P(t, delta_D, U, I, N, U_mean, I_mean, alpha=0.5, beta=0.3, lambda
     U_I_term = alpha * (U / U_mean) * (I / I_mean)
     N_term = beta * N
     integrand = delta_D_term + U_I_term + N_term
-    P = np.trapz(integrand * decay, t)
+    # Normalize by time interval to keep P in [0, 1]
+    P = np.trapz(integrand * decay, t) / T
     if detailed:
         return {
             'P': P,
             'contributions': {
-                'delta_D': np.trapz(delta_D_term * decay, t),
-                'U_I': np.trapz(U_I_term * decay, t),
-                'N': np.trapz(N_term * decay, t)
+                'delta_D': np.trapz(delta_D_term * decay, t) / T,
+                'U_I': np.trapz(U_I_term * decay, t) / T,
+                'N': np.trapz(N_term * decay, t) / T
             }
         }
     return P
@@ -36,7 +37,7 @@ def generate_synthetic_data(n_nodes, T=10):
     U = np.random.normal(0.5, 0.1, n_nodes)
     I = np.random.gamma(2, 0.2, n_nodes)
     delta_D = np.cumsum(np.random.normal(0, 0.05, n_nodes))
-    N = np.full(n_nodes, 0.5)  # Placeholder for graph-based N
+    N = np.full(n_nodes, 0.5)
     return t, U, I, delta_D, N
 
 def scenario_supportive_network(graph, node_a, node_b, t, U_mean, I_mean):
@@ -64,9 +65,43 @@ def scenario_chaotic_pulse(graph, node_d, t, U_mean, I_mean):
     graph.nodes[node_d]['I'] = np.random.uniform(0.2, 0.9, len(t))
     for neighbor in graph.neighbors(node_d):
         edge = graph[node_d][neighbor]
+
+        # Инициализация параметров ребра как массивов
+        edge['delta_D'] = np.full(len(t), -0.1)
+        edge['U'] = np.full(len(t), 0.5)
+        edge['I'] = np.full(len(t), 0.3)
+        edge['N'] = np.full(len(t), 0.5)
+
+        # Первая проверка условия для волны
         edge['P'] = calculate_P(t, edge['delta_D'], edge['U'], edge['I'], edge['N'], U_mean, I_mean, detailed=True)
-        if edge['P'] > 0.7:  # Propagate wave
-            edge['I'] += 0.1
-            if graph.degree(neighbor) > 5:  # Hub amplification
+
+        if edge['P']['P'] > 0.7 and not edge.get('wave_applied', False):
+            edge['I'] += 0.1  # Волна применяется ко всему массиву
+            edge['wave_applied'] = True
+
+            # Пересчитываем P после применения волны
+            edge['P'] = calculate_P(t, edge['delta_D'], edge['U'], edge['I'], edge['N'], U_mean, I_mean, detailed=True)
+
+            # Усиление для хабов
+            if graph.degree(neighbor) > 5:
                 edge['P']['P'] *= 1.2
+                
+        print("delta_D type and shape:", type(edge['delta_D']), np.shape(edge['delta_D']))
+        print("U type and shape:", type(edge['U']), np.shape(edge['U']))
+        print("I type and shape:", type(edge['I']), np.shape(edge['I']))
+        print("N type and shape:", type(edge['N']), np.shape(edge['N']))
+        # Исправленный расчёт P_t по времени:
+        edge['P_t'] = [
+            calculate_P(
+                np.array([t[i]]),
+                np.array([edge['delta_D'][i]]),  # явно создаём массив из одного элемента
+                np.array([edge['U'][i]]),
+                np.array([edge['I'][i]]),
+                np.array([edge['N'][i]]),
+                U_mean,
+                I_mean
+            )['P'] for i in range(len(t))
+        ]
+
     return graph
+
